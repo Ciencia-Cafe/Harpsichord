@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+	<style type="text/css">
+		.key {
+			height: 54px;
+			background-color: #cccccc;
+
+			border-width: 1px;
+			border-radius: 5px;
+			border-color: black;
+			border-style: solid;
+		}
+
+		.key-special { background-color: #7a7a7a; }
+		.key-special .key-label { background-color: #cccccc; }
+		.key-dead-key { background-color: #88e2e2; }
+		.key-dead-key .key-label { background-color: #c2e2e2; }
+
+		.key-pressed { background-color: #ffff00; }
+
+		.key-selected { border-color: #00aa00; }
+
+		.key-label {
+			top: 3px;
+			left: 6px;
+
+			border-width: 1px;
+			border-radius: 3px;
+			border-color: rgba(0, 0, 0, 0.1);
+			border-style: solid;
+
+			height: 40px;
+			background: #fcfcfc;
+
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			padding: 0px 2px;
+
+			user-select: none;
+
+			font-family: "Segoe UI", "Arial", sans-serif;
+			font-size: 16px;
+		}
+
+		.key-label-shift {
+			grid-row: 1;
+			grid-column: 1;
+		}
+
+		.key-label-base {
+			grid-row: 1;
+			grid-column: 1;
+			align-self: end;
+		}
+
+		.key-label-og {
+			grid-row: 1;
+			grid-column: 2;
+			color: #aaa;
+			text-align: right;
+		}
+
+		.key-selected .key-label {
+			border-color: #00aa00;
+		}
+
+		#keyboard-bg div {
+			position: absolute;
+			box-sizing: border-box;
+			background-clip: padding-box;
+		}
+
+		#keyboard-bg {
+			position: static;
+			margin: 10px;
+			box-sizing: content-box;
+
+			font-family: "Segoe UI", "Arial", sans-serif;
+			font-size: 14px;
+
+			background-color: #eeeeee;
+			border-width: 1px;
+			border-radius: 6px;
+			border-color: #ddd;
+			border-style: solid;
+			
+			padding: 10px;
+		}
+
+		#config-key {
+			margin: 10px;
+			padding: 10px;
+			background-color: #eeeeee;
+			border-width: 1px;
+			border-radius: 6px;
+			border-color: #ddd;
+			border-style: solid;
+			display: flex;
+			flex-direction: column;
+		}
+
+		#config-key .config-field {
+			margin-bottom: 10px;
+			font-family: sans-serif;
+		}
+
+		#play-area {
+			font-family: "Segoe UI", "Arial", sans-serif;
+			padding: 6px;
+			margin: 10px;
+			background-color: #eeeeee;
+			border-width: 1px;
+			border-radius: 6px;
+			border-color: #ddd;
+			border-style: solid;
+			white-space: pre;
+		}
+
+		label, p {
+			font-family: "Segoe UI", "Arial", sans-serif;
+		}
+	</style>
+	<title>Harpsichord</title>
+</head>
+<body>
+	<script src="harpsichord.js"></script>
+	<script src="keyboard.js"></script>
+	<script type="text/javascript">
+		let key_dict = {}
+		let dead_key_context = null
+
+		for (const key of KEYS_DATA) {
+			key_dict[key.scancode] = key
+		}
+
+		function key_desc(name, state) {
+			const cons = [name, state[0] ? 'SHIFT' : '', state[1] ? 'ALT' : '', state[2] ? 'CAPS' : '']
+			return `[${cons.filter(Boolean).join(' ').trim()}]`
+		}
+
+		function show_key_name(key_data, state, key_binds) {
+			if (key_data.special) return key_data.name
+
+			const desc = key_desc(key_data.name, state)
+
+			if (!(desc in key_binds)) return ''
+
+			return key_binds[desc].display ?? key_binds[desc].bind
+		}
+
+		function is_dead(key_data, state, key_binds) {
+			const desc = key_desc(key_data.name, state)
+
+			if (desc in key_binds == false) return false
+
+			return Object.keys(key_binds[desc].dead).length > 0
+		}
+
+		function do_key_action(key, state) {
+			if (key.scancode.startsWith('Shift')) state[0] = true
+			if (key.scancode.startsWith('Alt')) state[1] = true
+
+			return true
+		}
+
+		function undo_key_action(key, state) {
+			if (key.scancode.startsWith('Shift')) state[0] = false
+			if (key.scancode.startsWith('Alt')) state[1] = false
+
+			return false
+		}
+
+		function insertTextAtCursor(text) {
+			var sel, range, textNode;
+			if (window.getSelection) {
+				sel = window.getSelection();
+				if (sel.getRangeAt && sel.rangeCount) {
+					range = sel.getRangeAt(0);
+					range.deleteContents();
+					textNode = document.createTextNode(text);
+					range.insertNode(textNode);
+
+					range.setStart(textNode, textNode.length);
+					range.setEnd(textNode, textNode.length);
+					sel.removeAllRanges();
+					sel.addRange(range);
+				}
+			} else if (document.selection && document.selection.createRange) {
+				range = document.selection.createRange();
+				range.pasteHTML(text);
+			}
+		}
+
+		function ignore_input(event) {
+			if (KEYMAP.some(row => row.includes(event.code)) == false) return true
+			if (["Tab", "CapsLock", "Enter", "Backspace"].includes(event.code)) return true
+			// if (event.repeat) return true
+
+			return false
+		}
+
+		function focusEl(el) {
+			el.select()
+		}
+		
+		function play_keydown(e, state, key_binds) {
+			if (e.ctrlKey) return;
+			if (ignore_input(e)) return;
+			e.preventDefault()
+
+			const name = key_dict[e.code].name
+			const desc = key_desc(name, state)
+
+			document.dispatchEvent(new CustomEvent('pressdown', { detail: { scancode: e.code }, bubbles: true }))
+			
+			if (dead_key_context && desc in dead_key_context.dead) {
+				const char_value = dead_key_context.dead[desc]
+				insertTextAtCursor(char_value)
+				dead_key_context = null
+			} else if (!dead_key_context && desc in key_binds && Object.keys(key_binds[desc].dead).length > 0) {
+				dead_key_context = key_binds[desc]
+			} else {
+				if (desc in key_binds == false) return
+
+				const char_value = key_binds[desc].bind
+
+				if (dead_key_context) {
+					insertTextAtCursor(dead_key_context.bind)
+					dead_key_context = null
+					if (desc == '[Space]') return
+				}
+
+				insertTextAtCursor(char_value)
+			}
+		}
+
+		function play_keyup(e) {
+			if (ignore_input(e)) return
+			document.dispatchEvent(new CustomEvent('pressup', { detail: { scancode: e.code }, bubbles: true }))
+		}
+
+		const INCLUDES = {
+			'en-us': DEFAULT_EN_US,
+		}
+		function parse_keyboard(e, key_binds, error) {
+			let code = e.srcElement.value
+
+			let matches;
+			let included = {};
+			while (true) {
+				try {
+					matches = parse_harpsichord(code)
+					delete error.msg
+				} catch (e) {
+					error.msg = String(e)
+				}
+				
+				if (matches == null) return;
+
+				for (var k in key_binds){
+					if (key_binds.hasOwnProperty(k)){
+						delete key_binds[k];
+					}
+				}
+
+				let inc_code = code;
+				for (const match of matches) {
+					if (match.include && match.include in INCLUDES && !(match.include in included)) {
+						inc_code = INCLUDES[match.include] + inc_code
+						included[match.include] = true
+					}
+				}
+				if (inc_code == code) break;
+				code = inc_code
+			}
+
+			for (const match of matches) {
+				if (match == null) continue
+
+				if (match.ctx == null) {
+					if (!(`[${match.key}]` in key_binds)) {
+						key_binds[`[${match.key}]`] = { bind: match.string, dead: {}, display: match.string }
+					} else {
+						key_binds[`[${match.key}]`].bind = match.string
+						key_binds[`[${match.key}]`].display = match.string
+					}
+				} else {
+					const ctx = `[${match.ctx}]`
+					if (!(ctx in key_binds)) {
+						key_binds[ctx] = { bind: null, dead: { [`[${match.key}]`]: match.string }, display: match.string }
+					} else {
+						key_binds[ctx].dead[`[${match.key}]`] = match.string
+					}
+				}
+			}
+		}
+
+		function set_font(font) {
+			let keys = document.getElementsByClassName('key-label');
+			for (const el of keys) {
+				el.style.fontFamily = `${font}, "Segoe UI", "Arial", sans-serif`;
+			}
+			document.getElementById('play-area').style.fontFamily = `${font}, "Segoe UI", "Arial", sans-serif`;
+		}
+	</script>
+	<div id="keyboard" x-data="{
+		selected: {},
+		state: [false, false, false],
+		show_key_codes: true,
+		show_shift_keys: false,
+		display_font: '',
+		key_binds: {},
+		error_message: {},
+	}">
+		
+		<div id="keyboard-bg" x-data="{ keys: KEYS_DATA, keyboard: KEYBOARD_DATA }" :style="{ width: `${keyboard.width}px`, height: `${keyboard.height}px` }">
+			<div>
+				<template x-for="key in keys">
+					<div class="key" x-data="{ pressed: false, scancode: key.scancode, special: key.special, key_data: key }"
+						@pressdown.window="$event.detail.scancode == scancode ? pressed = do_key_action(key_data, state) : null"
+						@pressup.window="$event.detail.scancode == scancode ? pressed = undo_key_action(key_data, state) : null"
+						:style="{ width: `${key.where[2] * 54}px`, top: `${key.where[0] * 54}px`, left: `${key.where[1] * 54}px` }"
+						:class="{ 'key-pressed': pressed, 'key-special': special, 'key-selected': selected && selected.scancode == key.scancode, 'key-dead-key': is_dead(key_data, state, key_binds) }">
+						<div class="key-label" @click="selected = key; $dispatch('keyselect')" :style="{ width: `${key.where[2] * 54 - 14}px` }" >
+							<span class="key-label-base"
+								x-text="show_key_name(key_data, state, key_binds)"
+								></span>
+							<span class="key-label-shift"
+								x-show="show_shift_keys && !state[0] && !special"
+								x-text="show_key_name(key_data, [true, state[1], state[2]], key_binds)"
+								></span>
+							<span class="key-label-og"
+								x-show="show_key_codes || selected && selected.scancode == key.scancode"
+								x-text="key_data.special ? '' : key_data.name"
+								></span>
+						</div>
+					</div>
+				</template>
+			</div>
+		</div>
+
+
+
+		<div id="config-key" :style="{ top: `${keyboard.height + 50}px` }">
+			<div class="config-field">
+				<label>Show Keycodes:</label>
+				<input type="checkbox" x-model="show_key_codes">
+				<label>Show Shift:</label>
+				<input type="checkbox" x-model="show_shift_keys">
+				<label>Display Font (Enter to confirm):</label>
+				<input type="text" x-model="display_font" @keyup.enter="set_font(display_font)">
+			</div>
+
+			<textarea id="keyboard-description" @input="parse_keyboard($event, key_binds, error_message)" rows="14" spellcheck="false">include 'en-us'
+
+[#7]: [A] > 'á'
+[#7]: [E] > 'é'
+[#7]: [I] > 'í'
+[#7]: [O] > 'ó'
+[#7]: [U] > 'ú'
+[#7]: [A SHIFT] > 'Á'
+[#7]: [E SHIFT] > 'É'
+[#7]: [I SHIFT] > 'Í'
+[#7]: [O SHIFT] > 'Ó'
+[#7]: [U SHIFT] > 'Ú'</textarea>
+			<p x-text="error_message.msg" x-show='"msg" in error_message'></p>
+		</div>
+
+		<div>
+			<div id="play-area" contenteditable spellcheck="false"
+				@focusin="typing_mode = true"
+				@focusout="typing_mode = false"
+				
+				@keypress.prevent=""
+				@keydown="play_keydown($event, state, key_binds)"
+				@keyup="play_keyup"
+				></div>
+		</div>
+
+	</div>
+</body>
+</html>
