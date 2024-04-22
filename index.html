@@ -245,6 +245,8 @@
 
 		const INCLUDES = {
 			'en-us': DEFAULT_EN_US,
+			'qwerty-lower': DEFAULT_QWERTY_LOWER,
+			'qwerty-upper': DEFAULT_QWERTY_UPPER,
 		}
 		function parse_keyboard(e, key_binds, error) {
 			let code = e.srcElement.value
@@ -306,6 +308,23 @@
 			}
 			document.getElementById('play-area').style.fontFamily = `${font}, "Segoe UI", "Arial", sans-serif`;
 		}
+
+		function save_to_local(e) {
+			let name = prompt('Enter a name');
+			name = name.replace(' ', '_');
+			let code = document.getElementById('keyboard-description').value;
+			localStorage.setItem('#'+name, code);
+			alert(`Local storage is limited! Please save a copy of the code in your computer!\n\nEnter\n${window.location.origin}${window.location.pathname}#${name}\nto load the keyboard.`)
+		}
+
+		function on_load(el) {
+			if (window.location.hash.length > 0) {
+				const value = localStorage.getItem(window.location.hash);
+				if (value) {
+					el.value = value;
+				}
+			}
+		}
 	</script>
 	<div id="keyboard" x-data="{
 		selected: {},
@@ -353,9 +372,13 @@
 				<input type="checkbox" x-model="show_shift_keys">
 				<label>Display Font (Enter to confirm):</label>
 				<input type="text" x-model="display_font" @keyup.enter="set_font(display_font)">
+				<br>
+				<button type="button" @click="save_to_local">Save to local storage</button>
 			</div>
 
-			<textarea id="keyboard-description" @input="parse_keyboard($event, key_binds, error_message)" rows="14" spellcheck="false">include 'en-us'
+			<textarea id="keyboard-description"
+				x-init="on_load($el)"
+				@input="parse_keyboard($event, key_binds, error_message)" rows="14" spellcheck="false">include 'en-us'
 
 [#7]: [A] > 'á'
 [#7]: [E] > 'é'
