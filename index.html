@@ -314,16 +314,18 @@
 			name = name.replace(' ', '_');
 			let code = document.getElementById('keyboard-description').value;
 			localStorage.setItem('#'+name, code);
-			alert(`Local storage is limited! Please save a copy of the code in your computer!\n\nEnter\n${window.location.origin}${window.location.pathname}#${name}\nto load the keyboard.`)
+			alert(`Local storage is limited! Please save a copy of the code in your computer!\n\nEnter\n${window.location.origin}${window.location.pathname}#${name}\nto load the keyboard.`);
+			window.location = `${window.location.origin}${window.location.pathname}#${name}`;
 		}
 
-		function on_load(el) {
+		function on_load(e, key_binds, error) {
 			if (window.location.hash.length > 0) {
 				const value = localStorage.getItem(window.location.hash);
 				if (value) {
-					el.value = value;
+					e.srcElement.value = value;
 				}
 			}
+			parse_keyboard(e, key_binds, error);
 		}
 	</script>
 	<div id="keyboard" x-data="{
@@ -362,8 +364,6 @@
 			</div>
 		</div>
 
-
-
 		<div id="config-key" :style="{ top: `${keyboard.height + 50}px` }">
 			<div class="config-field">
 				<label>Show Keycodes:</label>
@@ -377,7 +377,7 @@
 			</div>
 
 			<textarea id="keyboard-description"
-				x-init="on_load($el)"
+				x-init="$nextTick(() => on_load({'srcElement': $el}, key_binds, error_message))"
 				@input="parse_keyboard($event, key_binds, error_message)" rows="14" spellcheck="false">include 'en-us'
 
 [#7]: [A] > 'á'
