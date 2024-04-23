@@ -231,10 +231,28 @@
 				if (dead_key_context) {
 					insertTextAtCursor(dead_key_context.bind)
 					dead_key_context = null
-					if (desc == '[Space]') return
+					if (desc == '[Space]' || desc == '[Space SHIFT]') return
 				}
 
 				insertTextAtCursor(char_value)
+			}
+
+			const sel = window.getSelection();
+			const trange = sel.getRangeAt(0);
+			const range = document.createRange();
+			range.setStart(document.getElementById('play-area'), 0);
+			range.setEnd(trange.endContainer, trange.endOffset);
+			let range_text = range.toString();
+			for (const seq in replacers) {
+				if (range_text.endsWith(seq)) {
+					range_text = range_text.replace(seq, replacers[seq]);
+					trange.setStart(document.getElementById('play-area'), 0);
+					trange.deleteContents();
+					let node = document.createTextNode(range_text);
+					trange.insertNode(node);
+					trange.setStart(node, node.length);
+					trange.setEnd(node, node.length);
+				}
 			}
 		}
 
@@ -243,13 +261,17 @@
 			document.dispatchEvent(new CustomEvent('pressup', { detail: { scancode: e.code }, bubbles: true }))
 		}
 
+		let replacers = {_len: 0}
+
 		const INCLUDES = {
 			'en-us': DEFAULT_EN_US,
 			'qwerty-lower': DEFAULT_QWERTY_LOWER,
 			'qwerty-upper': DEFAULT_QWERTY_UPPER,
 		}
 		function parse_keyboard(e, key_binds, error) {
-			let code = e.srcElement.value
+			let code = e.srcElement.value;
+
+			replacers = {};
 
 			let matches;
 			let included = {};
@@ -283,17 +305,30 @@
 			for (const match of matches) {
 				if (match == null) continue
 
+				if (match.delete) {
+					delete key_binds[`[${match.delete}]`];
+					continue;
+				}
+
+				if (match.replace) {
+					replacers[match.replace] = match.to;
+					if (match.replace.length > replacers._len) {
+						replacers._len = match.replace.length;
+					}
+					continue;
+				}
+
 				if (match.ctx == null) {
 					if (!(`[${match.key}]` in key_binds)) {
-						key_binds[`[${match.key}]`] = { bind: match.string, dead: {}, display: match.string }
+						key_binds[`[${match.key}]`] = { bind: match.string, dead: {}, display: match.display }
 					} else {
 						key_binds[`[${match.key}]`].bind = match.string
-						key_binds[`[${match.key}]`].display = match.string
+						key_binds[`[${match.key}]`].display = match.display
 					}
 				} else {
 					const ctx = `[${match.ctx}]`
 					if (!(ctx in key_binds)) {
-						key_binds[ctx] = { bind: null, dead: { [`[${match.key}]`]: match.string }, display: match.string }
+						key_binds[ctx] = { bind: null, dead: { [`[${match.key}]`]: match.string }, display: match.display }
 					} else {
 						key_binds[ctx].dead[`[${match.key}]`] = match.string
 					}
@@ -321,7 +356,6 @@
 		function on_load(e, key_binds, error) {
 			if (window.location.search.length > 0) {
 				const link = window.location.search.slice(1)
-				console.log(link)
 				fetch(link, {"mode" : "cors", "method": 'GET'})
 					.then(resp => {
 						if (!resp.ok) {
