@@ -319,7 +319,25 @@
 		}
 
 		function on_load(e, key_binds, error) {
-			if (window.location.hash.length > 0) {
+			if (window.location.search.length > 0) {
+				const link = window.location.search.slice(1)
+				console.log(link)
+				fetch(link, {"mode" : "cors", "method": 'GET'})
+					.then(resp => {
+						if (!resp.ok) {
+							alert('Provided URL failed to load');
+							throw new Error(`HTTP error! Status: ${response.status}`);
+						}
+						return resp.text()
+					})
+					.then(resp => {
+						e.srcElement.value = resp;
+						parse_keyboard(e, key_binds, error);
+					})
+					.catch(err => {
+						alert('Provided URL failed to load');
+					})
+			} else if (window.location.hash.length > 0) {
 				const value = localStorage.getItem(window.location.hash);
 				if (value) {
 					e.srcElement.value = value;
